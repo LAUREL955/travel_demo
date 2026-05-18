@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"D:\\\\wj\\\\xm\\\\demo\" -Recurse -Depth 2)",
+      "Bash(Select-Object Mode, FullName)",
+      "Bash(Format-Table -AutoSize)"
+    ]
+  }
+}
