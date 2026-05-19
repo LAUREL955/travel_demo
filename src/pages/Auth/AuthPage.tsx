@@ -1,21 +1,34 @@
 import React, { useState, useCallback } from 'react';
-import { X, Eye, EyeOff, Sparkles } from 'lucide-react';
+import { X, Eye, EyeOff, Sparkles, Phone, User } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 
 interface AuthPageProps {
   onClose: () => void;
-  onLoginSuccess: () => void;
+  onLoginSuccess: (user: any) => void;
+}
+
+async function hashPassword(password: string, phone: string): Promise<string> {
+  const msgBuffer = new TextEncoder().encode(password + ':' + phone);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 const AuthPage: React.FC<AuthPageProps> = ({ onClose, onLoginSuccess }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [password, setPassword] = useState('');
   const [nickname, setNickname] = useState('');
+  const [phone, setPhone] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [toastMessage, setToastMessage] = useState('');
 
-  const handlePasswordLogin = useCallback(async () => {
+  const handleLogin = useCallback(async () => {
+    if (!phone) {
+      setError('请输入手机号');
+      return;
+    }
     if (!password) {
       setError('请输入密码');
       return;
@@ -24,38 +37,98 @@ const AuthPage: React.FC<AuthPageProps> = ({ onClose, onLoginSuccess }) => {
     setLoading(true);
     setError('');
 
-    // 模拟登录
-    setTimeout(() => {
+    const hash = await hashPassword(password, phone);
+
+    const { data, error: queryError } = await supabase
+      .from('users')
+      .select('id, phone, nickname')
+      .eq('phone', phone)
+      .eq('password_hash', hash)
+      .maybeSingle();
+
+    if (queryError || !data) {
+      setError('手机号未注册或密码错误');
       setLoading(false);
-      onLoginSuccess();
-    }, 600);
-  }, [password, onLoginSuccess]);
+      return;
+    }
+
+    setLoading(false);
+    onLoginSuccess(data);
+  }, [phone, password, onLoginSuccess]);
 
   const handleRegister = useCallback(async () => {
     if (!nickname) {
       setError('请输入昵称');
       return;
     }
+    if (!phone) {
+      setError('请输入手机号');
+      return;
+    }
     if (!password) {
       setError('请输入密码');
+      return;
+    }
+    if (password.length < 6) {
+      setError('密码至少需要6位');
+      return;
+    }
+    if (!/^1[3-9]\d{9}$/.test(phone)) {
+      setError('请输入有效的手机号');
       return;
     }
 
     setLoading(true);
     setError('');
 
-    // 模拟注册
-    setTimeout(() => {
+    const { data: existing } = await supabase
+      .from('users')
+      .select('id')
+      .eq('phone', phone)
+      .maybeSingle();
+
+    if (existing) {
+      setError('该手机号已被注册');
       setLoading(false);
-      setError('注册成功，请登录');
+      return;
+    }
+
+    const hash = await hashPassword(password, phone);
+
+    const { error: insertError } = await supabase
+      .from('users')
+      .insert({ phone, password_hash: hash, nickname });
+
+    if (insertError) {
+      if (insertError.code === '23505') {
+        setError('该手机号已被注册');
+      } else {
+        setError(insertError.message);
+      }
+      setLoading(false);
+      return;
+    }
+
+    setLoading(false);
+    setToastMessage('注册成功，请登录');
+    setTimeout(() => {
+      setToastMessage('');
       setIsLogin(true);
-    }, 600);
-  }, [nickname, password]);
+    }, 2000);
+  }, [nickname, phone, password]);
 
   const handleWechatLogin = useCallback(() => {
     setToastMessage('尚未支持该登录选项');
     setTimeout(() => setToastMessage(''), 2500);
   }, []);
+
+  const switchMode = useCallback(() => {
+    setIsLogin(!isLogin);
+    setError('');
+    setPassword('');
+    setNickname('');
+    setPhone('');
+  }, [isLogin]);
 
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-purple-900 dark:to-gray-900 flex items-center justify-center z-50 p-4">
@@ -89,23 +162,36 @@ const AuthPage: React.FC<AuthPageProps> = ({ onClose, onLoginSuccess }) => {
           <div className="space-y-4">
             {!isLogin && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  昵称
-                </label>
-                <input
-                  type="text"
-                  value={nickname}
-                  onChange={(e) => setNickname(e.target.value)}
-                  placeholder="请输入昵称"
-                  className="w-full px-4 py-3 bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                />
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">昵称</label>
+                <div className="relative">
+                  <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    type="text"
+                    value={nickname}
+                    onChange={(e) => setNickname(e.target.value)}
+                    placeholder="请输入昵称"
+                    className="w-full px-4 py-3 bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all pl-12"
+                  />
+                </div>
               </div>
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                密码
-              </label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">手机号</label>
+              <div className="relative">
+                <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
+                  placeholder="请输入手机号"
+                  className="w-full px-4 py-3 bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all pl-12"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">密码</label>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
@@ -119,17 +205,13 @@ const AuthPage: React.FC<AuthPageProps> = ({ onClose, onLoginSuccess }) => {
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-4 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-full transition-colors"
                 >
-                  {showPassword ? (
-                    <EyeOff className="w-5 h-5 text-gray-400" />
-                  ) : (
-                    <Eye className="w-5 h-5 text-gray-400" />
-                  )}
+                  {showPassword ? <EyeOff className="w-5 h-5 text-gray-400" /> : <Eye className="w-5 h-5 text-gray-400" />}
                 </button>
               </div>
             </div>
 
             <button
-              onClick={isLogin ? handlePasswordLogin : handleRegister}
+              onClick={isLogin ? handleLogin : handleRegister}
               disabled={loading}
               className="w-full py-3 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 disabled:from-gray-300 disabled:to-gray-400 text-white font-semibold rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl disabled:shadow-none transform hover:scale-[1.02] active:scale-[0.98]"
             >
@@ -153,15 +235,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onClose, onLoginSuccess }) => {
 
             <p className="text-center text-sm text-gray-600 dark:text-gray-400 mt-6">
               {isLogin ? '还没有账号？' : '已有账号？'}
-              <button
-                onClick={() => {
-                  setIsLogin(!isLogin);
-                  setError('');
-                  setPassword('');
-                  setNickname('');
-                }}
-                className="text-blue-500 hover:text-blue-600 font-medium ml-1"
-              >
+              <button onClick={switchMode} className="text-blue-500 hover:text-blue-600 font-medium ml-1">
                 {isLogin ? '立即注册' : '立即登录'}
               </button>
             </p>
