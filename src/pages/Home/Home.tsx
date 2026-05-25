@@ -3,17 +3,15 @@ import { useDispatch, useSelector } from 'react-redux';
 import { 
   setUserLocation, 
   setStickers, 
-  setTheme, 
   setSearchQuery, 
   setShowSettings, 
-  setSelectedColor,
   setUserPreferences,
   setParsedInputData,
   setShowNaturalLanguageInput,
   setShowPreferenceSettings,
   setShowPersonalizedItinerary,
   setShowRouteHistory,
-  addRouteToHistory,
+  setShowTripHistory,
   setCurrentRoute,
   setAuthenticated,
   setUser,
@@ -31,8 +29,6 @@ import {
   MapPin,
   Navigation,
   Star,
-  ShoppingBag,
-  Home as HomeIcon,
   Sparkles,
   X,
   ChevronRight
@@ -42,13 +38,13 @@ import SettingsPanel from '../../components/SettingsPanel/SettingsPanel';
 import NaturalLanguageInput from '../../components/NaturalLanguageInput/NaturalLanguageInput';
 import PreferenceSettings from '../../components/PreferenceSettings/PreferenceSettings';
 import PersonalizedItinerary from '../../components/PersonalizedItinerary/PersonalizedItinerary';
+import TripHistory from '../../components/TripHistory/TripHistory';
 import AuthPage from '../Auth/AuthPage';
 
 const Home: React.FC = () => {
   const dispatch = useDispatch();
   const { 
     userLocation, 
-    stickers, 
     theme, 
     searchQuery, 
     showSettings,
@@ -60,8 +56,8 @@ const Home: React.FC = () => {
     parsedInputData,
     routeHistory,
     showRouteHistory,
+    showTripHistory,
     isAuthenticated,
-    user,
     showAuth
   } = useSelector((state: RootState) => state.route);
   const [isLoading, setIsLoading] = useState(true);
@@ -71,7 +67,7 @@ const Home: React.FC = () => {
   const [selectedAttraction, setSelectedAttraction] = useState<any>(null);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [tempParsedData, setTempParsedData] = useState<any>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   const getUserLocation = useCallback(async () => {
     performanceMonitor.mark('locationFetchStart');
@@ -189,23 +185,11 @@ const Home: React.FC = () => {
     }
   }, [theme]);
 
-  const handleThemeToggle = useCallback(() => {
-    const newTheme = theme === 'light' ? 'dark' : 'light';
-    dispatch(setTheme(newTheme));
-    
-    if (newTheme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-    
-    cacheManager.set('theme', newTheme, 86400000);
-  }, [theme, dispatch]);
-
   const handleSearchChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const query = e.target.value;
     dispatch(setSearchQuery(query));
-    
+    setSearchError(null);
+
     if (query.trim().length > 0) {
       setIsSearching(true);
       try {
@@ -218,6 +202,7 @@ const Home: React.FC = () => {
           setSearchResults([]);
         }
       } catch (error) {
+        setSearchError('无法连接服务器');
         console.error('搜索失败:', error);
         setSearchResults([]);
       } finally {
@@ -238,7 +223,6 @@ const Home: React.FC = () => {
 
   const handleParsedData = useCallback((data: any) => {
     dispatch(setShowNaturalLanguageInput(false));
-    setTempParsedData(data);
     dispatch(setParsedInputData(data));
     dispatch(setShowPreferenceSettings(true));
   }, [dispatch]);
@@ -369,7 +353,13 @@ const Home: React.FC = () => {
                     ))}
                   </div>
                 )}
-                
+
+                {searchError && searchQuery.trim().length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 dark:border-gray-700/20 p-4 z-50">
+                    <p className="text-sm text-red-600 dark:text-red-400 text-center">{searchError}</p>
+                  </div>
+                )}
+
                 {isSearching && (
                   <div className="absolute top-full left-0 right-0 mt-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 dark:border-gray-700/20 p-4 z-50">
                     <div className="flex items-center justify-center">
@@ -492,6 +482,13 @@ const Home: React.FC = () => {
                     }`}
                   >
                     历史路线 ({routeHistory.length})
+                  </button>
+                  <button
+                    onClick={() => dispatch(setShowTripHistory(true))}
+                    className="px-6 py-3 rounded-xl font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg hover:from-amber-600 hover:to-orange-600 transition-all duration-300 flex items-center gap-2"
+                  >
+                    <Star className="w-5 h-5" />
+                    行程历史
                   </button>
                 </div>
 
@@ -875,10 +872,15 @@ const Home: React.FC = () => {
         />
       )}
 
+      {showTripHistory && (
+        <TripHistory onClose={() => dispatch(setShowTripHistory(false))} />
+      )}
+
       {showAuth && !isAuthenticated && (
         <AuthPage
           onClose={() => dispatch(setShowAuth(false))}
-          onLoginSuccess={() => {
+          onLoginSuccess={(user) => {
+            dispatch(setUser(user));
             dispatch(setAuthenticated(true));
             dispatch(setShowAuth(false));
           }}
