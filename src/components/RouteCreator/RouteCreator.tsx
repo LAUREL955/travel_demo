@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { addDestination, setStickers, setCurrentRoute, addRouteToHistory } from '../../store/slices/routeSlice';
+import { addDestination, setCurrentRoute, addRouteToHistory } from '../../store/slices/routeSlice';
 import { RootState } from '../../store';
-import { Search, MapPin, Star, X, Plus, Check, Route } from 'lucide-react';
+import { Search, MapPin, Star, X, Plus, Check } from 'lucide-react';
 import { planOptimalRoute } from '../../utils/algorithms/routePlanner';
 
 interface Attraction {
@@ -40,6 +40,7 @@ const RouteCreator: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [showTimeSlotSelector, setShowTimeSlotSelector] = useState<string | null>(null);
   const [showSuccessPage, setShowSuccessPage] = useState(false);
   const [successRouteData, setSuccessRouteData] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const API_BASE_URL = 'http://localhost:5000/api';
 
@@ -54,9 +55,11 @@ const RouteCreator: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       const data = await response.json();
       
       if (data.success) {
+        setError(null);
         setAttractions(data.data);
       }
     } catch (error) {
+      setError('无法连接服务器');
       console.error('Error fetching attractions:', error);
     } finally {
       setIsLoading(false);
@@ -69,9 +72,11 @@ const RouteCreator: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       const data = await response.json();
       
       if (data.success) {
+        setError(null);
         setPopularAttractions(data.data);
       }
     } catch (error) {
+      setError('无法连接服务器');
       console.error('Error fetching popular attractions:', error);
     }
   }, []);
@@ -82,12 +87,23 @@ const RouteCreator: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       const data = await response.json();
       
       if (data.success) {
+        setError(null);
         setCategories(data.data);
       }
     } catch (error) {
+      setError('无法连接服务器');
       console.error('Error fetching categories:', error);
     }
   }, []);
+
+  const handleRetry = useCallback(() => {
+    setError(null);
+    fetchCategories();
+    fetchPopularAttractions();
+    if (searchQuery || selectedCategory !== 'all') {
+      fetchAttractions();
+    }
+  }, [fetchCategories, fetchPopularAttractions, fetchAttractions, searchQuery, selectedCategory]);
 
   useEffect(() => {
     fetchCategories();
@@ -103,6 +119,10 @@ const RouteCreator: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
     return () => clearTimeout(timeoutId);
   }, [searchQuery, selectedCategory, fetchAttractions]);
+
+  useEffect(() => {
+    setError(null);
+  }, [searchQuery, selectedCategory]);
 
   const handleSelectAttraction = (attraction: Attraction) => {
     const newSelected = new Set(selectedAttractions);
@@ -290,6 +310,18 @@ const RouteCreator: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             ))}
           </div>
         </div>
+
+        {error && (
+          <div className="mx-6 p-4 bg-red-50/80 dark:bg-red-900/30 backdrop-blur-xl rounded-xl border border-red-200/50 dark:border-red-700/50 flex items-center justify-between">
+            <span className="text-red-600 dark:text-red-400 text-sm font-medium">{error}</span>
+            <button
+              onClick={handleRetry}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              重试
+            </button>
+          </div>
+        )}
 
         <div className={`p-6 ${showSuccessPage ? '' : 'flex-1 overflow-y-auto'}`}>
           {showSuccessPage && successRouteData ? (
